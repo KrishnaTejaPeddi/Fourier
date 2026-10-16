@@ -1,0 +1,187 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Fourier Sketch</title>
+<style>
+:root{color-scheme:light;--ink:#202124;--muted:#70757a;--line:#d9dce1;--paper:#fff;--canvas:#fcfcfb;--accent:#236f68}
+*{box-sizing:border-box}
+body{margin:0;background:var(--paper);color:var(--ink);font:14px/1.45 system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+main{max-width:1180px;margin:0 auto;padding:22px 22px 28px}
+header{margin-bottom:16px}
+h1{font-size:21px;font-weight:600;letter-spacing:-.035em;margin:0}
+.sub{font-size:13px;color:var(--muted);margin:3px 0 0}
+.app{display:grid;grid-template-columns:minmax(0,1fr) 235px;gap:18px}
+.drawing{border:1px solid var(--line);border-radius:5px;overflow:hidden;min-width:0}
+.status{min-height:37px;padding:10px 12px;font-size:11px;letter-spacing:.06em;color:var(--muted);border-bottom:1px solid var(--line);display:flex;justify-content:space-between;gap:10px}
+.status span:last-child{font-variant-numeric:tabular-nums}
+canvas{display:block;width:100%;height:min(67vh,640px);min-height:340px;background:var(--canvas);touch-action:none;cursor:crosshair}
+.buttons{display:flex;gap:7px;flex-wrap:wrap;align-items:center;padding:10px;border-top:1px solid var(--line)}
+button,select{font:inherit;font-size:13px;padding:8px 10px;background:#fff;color:var(--ink);border:1px solid #c9cdd3;border-radius:4px;cursor:pointer;max-width:100%}
+button:hover,select:hover{background:#f3f5f5}
+button.primary{background:#242b2c;color:#fff;border-color:#242b2c}
+button:disabled{opacity:.38;cursor:default}
+aside{border-top:1px solid var(--line)}
+.section{padding:13px 0 16px;border-bottom:1px solid var(--line)}
+h2{font-size:13px;font-weight:600;margin:0 0 13px}
+.control{margin:0 0 17px}
+.control:last-child{margin-bottom:0}
+.labelline{display:flex;justify-content:space-between;gap:8px;align-items:center;margin-bottom:7px;font-size:12px}
+.labelline output{color:var(--muted);font-variant-numeric:tabular-nums}
+input[type=range]{width:100%;accent-color:var(--accent);display:block}
+.check{display:flex;align-items:center;gap:8px;color:#45494d;font-size:12px;margin:10px 0}
+input[type=checkbox]{accent-color:var(--accent)}
+.note{font-size:12px;color:var(--muted);margin:10px 0 0}
+.stats{font-size:12px;color:var(--muted);display:flex;justify-content:space-between;padding:4px 0}
+.stats strong{color:var(--ink);font-weight:500}
+footer{font-size:12px;color:var(--muted);margin-top:12px}
+@media(max-width:780px){main{padding:15px 12px}.app{grid-template-columns:1fr;gap:15px}aside{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));column-gap:20px}.section{padding:12px 0}.section:last-child{border-bottom:0}canvas{height:54vh;min-height:300px}}
+@media(max-width:430px){.status{font-size:10px}.buttons{padding:8px}.buttons button,.buttons select{font-size:12px;padding:7px 8px}}
+</style>
+</head>
+<body>
+<main>
+<header><h1>Fourier sketch</h1><p class="sub">Draw multiple strokes; one Fourier series reconstructs the whole drawing.</p></header>
+<div class="app">
+<section class="drawing">
+ <div class="status"><span id="mode">DRAW · drag to sketch</span><span id="pointsLabel">0 points · 0 strokes</span></div>
+ <canvas id="canvas" aria-label="Sketch canvas. Lift the pointer between separate strokes."></canvas>
+ <div class="buttons">
+  <button id="drawBtn" class="primary">New drawing</button>
+  <button id="undoBtn" disabled>Undo stroke</button>
+  <button id="buildBtn" disabled>Build series</button>
+  <button id="playBtn" disabled>▶ Animate</button>
+  <select id="exampleSelect" aria-label="Choose an example">
+   <option value="heart">Heart</option>
+   <option value="star">Star</option>
+   <option value="smiley">Smiley face</option>
+   <option value="house">House</option>
+   <option value="infinity">Infinity</option>
+   <option value="flower">Flower</option>
+   <option value="spiral">Spiral</option>
+   <option value="wave">Sine wave</option>
+   <option value="triangle">Triangle</option>
+   <option value="cat">Cat outline</option>
+  </select>
+  <button id="loadExampleBtn">Load example</button>
+ </div>
+</section>
+<aside>
+ <section class="section"><h2>Reconstruction</h2>
+  <div class="control"><div class="labelline"><label for="terms">Fourier terms</label><output id="termsOut">All</output></div><input id="terms" type="range" min="1" max="256" value="256"><p class="note">More terms preserve more detail. At the maximum, all sampled frequencies are used in one series.</p></div>
+  <div class="control"><div class="labelline"><label for="speed">Animation speed</label><output id="speedOut">1×</output></div><input id="speed" type="range" min="100" max="400" step="25" value="100"></div>
+  <div class="control"><div class="labelline"><label for="thickness">Trace thickness</label><output id="thicknessOut">2</output></div><input id="thickness" type="range" min="1" max="5" step=".5" value="2"></div>
+ </section>
+ <section class="section"><h2>Display</h2>
+  <label class="check"><input id="vectors" type="checkbox" checked> Rotating vectors</label>
+  <label class="check"><input id="circles" type="checkbox"> Circles</label>
+  <label class="check"><input id="original" type="checkbox" checked> Original strokes</label>
+  <label class="check"><input id="closeLoop" type="checkbox"> Close each stroke before joining</label>
+  <p class="note">Leave “Close each stroke before joining” off for separate lines, eyes, a mouth, and other open strokes.</p>
+ </section>
+ <section class="section"><h2>Info</h2>
+  <div class="stats"><span>Input strokes</span><strong id="strokeStat">0</strong></div>
+  <div class="stats"><span>Sample points</span><strong id="samples">—</strong></div>
+  <div class="stats"><span>Terms used</span><strong id="used">—</strong></div>
+  <div class="stats"><span>Progress</span><strong id="progress">—</strong></div>
+  <p class="note">All strokes are encoded into one Fourier series. Travel between strokes is part of the mathematical path, but the pen is visually lifted during those connector sections.</p>
+ </section>
+</aside>
+</div>
+<footer>Tip: Release the mouse or lift your finger between strokes. All parts are reconstructed by one set of Fourier coefficients. Use “Undo stroke” to remove the last line.</footer>
+</main>
+
+<script>
+(()=>{
+const $=id=>document.getElementById(id),canvas=$('canvas'),ctx=canvas.getContext('2d');
+let W=800,H=540,dpr=1,strokes=[],currentStroke=null,drawing=false;
+let series=null,built=false,playing=false,t=0,lastFrame=0,traceSegments=[],currentTrace=null;
+let approxTerms=-1,approxPoints=[];
+const color={ink:'#202124',trace:'#236f68',vector:'#737d82',circle:'#c9ced1'};
+function resize(){const r=canvas.getBoundingClientRect();dpr=Math.min(window.devicePixelRatio||1,2);W=Math.max(1,r.width);H=Math.max(1,r.height);canvas.width=Math.round(W*dpr);canvas.height=Math.round(H*dpr);ctx.setTransform(dpr,0,0,dpr,0,0);render()}
+function pos(e){const r=canvas.getBoundingClientRect();return{x:e.clientX-r.left,y:e.clientY-r.top}}
+function distance(a,b){return Math.hypot(a.x-b.x,a.y-b.y)}
+function pointCount(){return strokes.reduce((n,s)=>n+s.length,0)}
+function validStrokes(){return strokes.filter(s=>s.length>1)}
+function updateLabels(){const n=validStrokes().length;$('pointsLabel').textContent=pointCount()+' points · '+n+' strokes';$('strokeStat').textContent=n;$('samples').textContent=series?series.samples.length:'—';$('used').textContent=built?activeCoeffs().length:'—';$('undoBtn').disabled=strokes.length===0}
+function line(p,col,width,close=false,dash=[]){if(!p||p.length<1)return;ctx.beginPath();ctx.strokeStyle=col;ctx.lineWidth=width;ctx.lineJoin='round';ctx.lineCap='round';ctx.setLineDash(dash);ctx.moveTo(p[0].x,p[0].y);for(let i=1;i<p.length;i++)ctx.lineTo(p[i].x,p[i].y);if(close&&p.length>1)ctx.closePath();ctx.stroke();ctx.setLineDash([])}
+// Build one periodic route. User strokes are joined by virtual pen-up connectors.
+// These connectors are included in the Fourier path but hidden when drawing the trace.
+function buildRoute(strokeList,closeEach){
+ const segs=[];let total=0;
+ function add(a,b,type){const len=distance(a,b);if(len<.05)return;segs.push({a,b,type,len,start:total,end:total+len});total+=len}
+ for(let i=0;i<strokeList.length;i++){
+  const s=strokeList[i];
+  for(let j=1;j<s.length;j++)add(s[j-1],s[j],'draw');
+  let end=s[s.length-1];
+  if(closeEach&&distance(end,s[0])>.5){add(end,s[0],'draw');end=s[0]}
+  const next=strokeList[(i+1)%strokeList.length][0];
+  add(end,next,'gap');
+ }
+ if(total<2||!segs.length)return null;
+ const n=Math.max(128,Math.min(640,Math.round(total/1.5)));
+ const samples=[];let j=0;
+ for(let k=0;k<n;k++){
+  const target=total*k/n;
+  while(j<segs.length-1&&segs[j].end<target)j++;
+  const seg=segs[j],u=Math.max(0,Math.min(1,(target-seg.start)/(seg.len||1)));
+  samples.push({x:seg.a.x+(seg.b.x-seg.a.x)*u,y:seg.a.y+(seg.b.y-seg.a.y)*u});
+ }
+ const gaps=segs.filter(s=>s.type==='gap').map(s=>({start:s.start/total,end:s.end/total}));
+ return{samples,length:total,gaps};
+}
+function dft(p){const N=p.length,cx=p.reduce((s,q)=>s+q.x,0)/N,cy=p.reduce((s,q)=>s+q.y,0)/N,out=[];for(let k=0;k<N;k++){let re=0,im=0;for(let j=0;j<N;j++){const x=p[j].x-cx,y=-(p[j].y-cy),a=2*Math.PI*k*j/N,c=Math.cos(a),s=Math.sin(a);re+=x*c+y*s;im+=y*c-x*s}re/=N;im/=N;out.push({freq:k<=Math.floor(N/2)?k:k-N,amp:Math.hypot(re,im),phase:Math.atan2(im,re)})}return{cx,cy,coeffs:out.sort((a,b)=>b.amp-a.amp)}}
+function activeCoeffs(){if(!series)return[];const n=Math.min(series.coeffs.length,+$('terms').value);return series.coeffs.slice(0,n).sort((a,b)=>Math.abs(a.freq)-Math.abs(b.freq)||a.freq-b.freq)}
+function tipAt(time,show){if(!series)return{x:W/2,y:H/2};let x=series.cx,y=series.cy;for(const c of activeCoeffs()){const a=c.phase+c.freq*2*Math.PI*time,dx=c.amp*Math.cos(a),dy=-c.amp*Math.sin(a);if(show&&$('circles').checked&&c.amp>1){ctx.beginPath();ctx.arc(x,y,c.amp,0,2*Math.PI);ctx.strokeStyle=color.circle;ctx.lineWidth=.8;ctx.stroke()}if(show&&$('vectors').checked){ctx.beginPath();ctx.moveTo(x,y);ctx.lineTo(x+dx,y+dy);ctx.strokeStyle=color.vector;ctx.lineWidth=1;ctx.stroke()}x+=dx;y+=dy}return{x,y}}
+function inGap(time){if(!series)return false;const u=((time%1)+1)%1;return series.gaps.some(g=>u>=g.start&&u<g.end)}
+function rebuildApprox(){const n=series.samples.length,cs=activeCoeffs();approxPoints=[];for(let k=0;k<n;k++){let x=series.cx,y=series.cy;const time=k/n;for(const c of cs){const a=c.phase+c.freq*2*Math.PI*time;x+=c.amp*Math.cos(a);y-=c.amp*Math.sin(a)}approxPoints.push({x,y})}approxTerms=+$('terms').value}
+function render(){ctx.clearRect(0,0,W,H);ctx.fillStyle='#fcfcfb';ctx.fillRect(0,0,W,H);const close=$('closeLoop').checked;
+ if($('original').checked){for(const s of strokes)if(s.length>1)line(s,'#c5c9cc',1.25,close,[3,3])}
+ if(!built||!series){for(const s of strokes)if(s.length>1)line(s,color.ink,2,close);return}
+ if(approxTerms!==+$('terms').value)rebuildApprox();
+ for(const seg of traceSegments)if(seg.length>1)line(seg,color.trace,+$('thickness').value,false);
+ if(currentTrace&&currentTrace.length>1)line(currentTrace,color.trace,+$('thickness').value,false);
+ const p=tipAt(t,true);
+ if(!inGap(t)){ctx.beginPath();ctx.arc(p.x,p.y,2.5,0,2*Math.PI);ctx.fillStyle=color.trace;ctx.fill()}
+}
+function resetTrace(){traceSegments=[];currentTrace=null;t=0;approxTerms=-1;approxPoints=[]}
+function build(){const route=buildRoute(validStrokes(),$('closeLoop').checked);if(!route){$('mode').textContent='DRAW MORE TO BUILD';return}const f=dft(route.samples);series={...route,...f};built=true;playing=false;resetTrace();const max=series.coeffs.length;$('terms').max=max;$('terms').value=max;$('termsOut').textContent=max+' (max)';$('playBtn').disabled=false;$('playBtn').textContent='▶ Animate';$('mode').textContent='FOURIER · one series';$('progress').textContent='0%';updateLabels();rebuildApprox();render()}
+function invalidateForDrawing(){if(built){built=false;playing=false;series=null;resetTrace();$('playBtn').disabled=true;$('progress').textContent='—'}}
+function clear(){strokes=[];currentStroke=null;series=null;built=false;playing=false;resetTrace();$('buildBtn').disabled=true;$('playBtn').disabled=true;$('playBtn').textContent='▶ Animate';$('mode').textContent='DRAW · drag to sketch';$('termsOut').textContent='All';$('progress').textContent='—';updateLabels();render()}
+function ellipseStroke(cx,cy,rx,ry,n=180,start=0,end=2*Math.PI){const p=[];for(let i=0;i<=n;i++){const a=start+(end-start)*i/n;p.push({x:cx+rx*Math.cos(a),y:cy+ry*Math.sin(a)})}return p}
+function polygon(points){return points.map(([x,y])=>({x,y}))}
+function loadExample(name){clear();const cx=W/2,cy=H/2,s=Math.min(W,H)*.26;const add=p=>strokes.push(p);
+ if(name==='heart'){const p=[];for(let i=0;i<=500;i++){const a=2*Math.PI*i/500,x=16*Math.sin(a)**3,y=13*Math.cos(a)-5*Math.cos(2*a)-2*Math.cos(3*a)-Math.cos(4*a);p.push({x:cx+x*s/17,y:cy-y*s/17})}add(p)}
+ else if(name==='star'){const p=[];for(let i=0;i<=10;i++){const a=-Math.PI/2+i*Math.PI/5,r=i%2===0?s:s*.43;p.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)})}add(p)}
+ else if(name==='smiley'){add(ellipseStroke(cx,cy,s*.83,s*.83,220));add(ellipseStroke(cx-s*.3,cy-s*.2,s*.09,s*.13,50));add(ellipseStroke(cx+s*.3,cy-s*.2,s*.09,s*.13,50));add(ellipseStroke(cx,cy+s*.02,s*.43,s*.33,100,.14*Math.PI,.86*Math.PI))}
+ else if(name==='house'){add(polygon([[cx-s*.8,cy-s*.1],[cx,cy-s*.85],[cx+s*.8,cy-s*.1],[cx+s*.8,cy+s*.75],[cx-s*.8,cy+s*.75],[cx-s*.8,cy-s*.1]]));add(polygon([[cx-s*.18,cy+s*.75],[cx-s*.18,cy+s*.28],[cx+s*.18,cy+s*.28],[cx+s*.18,cy+s*.75]]));add(polygon([[cx-s*.55,cy+s*.02],[cx-s*.26,cy+s*.02],[cx-s*.26,cy+s*.3],[cx-s*.55,cy+s*.3],[cx-s*.55,cy+s*.02]]));add(polygon([[cx+s*.26,cy+s*.02],[cx+s*.55,cy+s*.02],[cx+s*.55,cy+s*.3],[cx+s*.26,cy+s*.3],[cx+s*.26,cy+s*.02]]))}
+ else if(name==='infinity'){const p=[];for(let i=0;i<=420;i++){const a=2*Math.PI*i/420;p.push({x:cx+s*.9*Math.sin(a),y:cy+s*.48*Math.sin(2*a)})}add(p)}
+ else if(name==='flower'){const p=[];for(let i=0;i<=600;i++){const a=2*Math.PI*i/600,r=s*(.48+.42*Math.cos(5*a));p.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)})}add(p)}
+ else if(name==='spiral'){const p=[];for(let i=0;i<=500;i++){const a=4.5*Math.PI*i/500,r=s*.04+s*.88*i/500;p.push({x:cx+r*Math.cos(a),y:cy+r*Math.sin(a)})}add(p)}
+ else if(name==='wave'){const p=[];for(let i=0;i<=360;i++){const u=i/360;p.push({x:cx-s+2*s*u,y:cy+s*.3*Math.sin(4*Math.PI*u)})}add(p)}
+ else if(name==='triangle'){add(polygon([[cx,cy-s],[cx+s*.87,cy+s*.5],[cx-s*.87,cy+s*.5],[cx,cy-s]]))}
+ else if(name==='cat'){add(polygon([[cx-s*.7,cy-s*.05],[cx-s*.66,cy-s*.78],[cx-s*.17,cy-s*.48],[cx+s*.17,cy-s*.48],[cx+s*.66,cy-s*.78],[cx+s*.7,cy-s*.05],[cx+s*.53,cy+s*.48],[cx,cy+s*.72],[cx-s*.53,cy+s*.48],[cx-s*.7,cy-s*.05]]));add(ellipseStroke(cx-s*.24,cy-s*.05,s*.045,s*.07,30));add(ellipseStroke(cx+s*.24,cy-s*.05,s*.045,s*.07,30));add(polygon([[cx-s*.08,cy+s*.14],[cx+s*.08,cy+s*.14],[cx,cy+s*.23],[cx-s*.08,cy+s*.14]]));add(polygon([[cx,cy+s*.23],[cx-s*.06,cy+s*.3]]));add(polygon([[cx,cy+s*.23],[cx+s*.06,cy+s*.3]]))}
+ built=false;playing=false;series=null;resetTrace();$('buildBtn').disabled=false;$('playBtn').disabled=true;$('mode').textContent='EXAMPLE · '+name.toUpperCase();updateLabels();render()
+}
+canvas.addEventListener('pointerdown',e=>{invalidateForDrawing();drawing=true;currentStroke=[pos(e)];strokes.push(currentStroke);canvas.setPointerCapture(e.pointerId);$('buildBtn').disabled=true;$('mode').textContent='DRAW · lift pointer for another stroke';updateLabels();render()});
+canvas.addEventListener('pointermove',e=>{if(!drawing||!currentStroke)return;const p=pos(e);if(distance(p,currentStroke[currentStroke.length-1])>1.2)currentStroke.push(p);updateLabels();render()});
+function endDraw(){if(!drawing)return;drawing=false;if(currentStroke&&currentStroke.length<2)strokes.pop();currentStroke=null;$('buildBtn').disabled=validStrokes().length===0;$('mode').textContent='DRAW · '+validStrokes().length+' strokes';updateLabels();render()}
+canvas.addEventListener('pointerup',endDraw);canvas.addEventListener('pointercancel',endDraw);
+$('drawBtn').onclick=clear;
+$('undoBtn').onclick=()=>{if(!strokes.length)return;strokes.pop();invalidateForDrawing();$('buildBtn').disabled=validStrokes().length===0;$('mode').textContent='DRAW · stroke undone';updateLabels();render()};
+$('buildBtn').onclick=build;
+$('playBtn').onclick=()=>{if(!built||!series)return;if(t>=1)resetTrace();playing=!playing;$('playBtn').textContent=playing?'Ⅱ Pause':'▶ Animate';$('mode').textContent=playing?'FOURIER · one series':'FOURIER · paused';if(playing){lastFrame=0;}};
+$('loadExampleBtn').onclick=()=>loadExample($('exampleSelect').value);
+$('terms').oninput=()=>{const n=+$('terms').value;$('termsOut').textContent=n===Number($('terms').max)?n+' (max)':n;approxTerms=-1;if(built){playing=false;resetTrace();$('playBtn').textContent='▶ Animate';$('progress').textContent='0%';rebuildApprox();updateLabels();render()}};
+$('speed').oninput=()=>{const v=+$('speed').value/100;$('speedOut').textContent=v.toFixed(2).replace(/\.?0+$/,'')+'×'};
+$('thickness').oninput=()=>{$('thicknessOut').textContent=$('thickness').value;if(built)render()};
+['vectors','circles','original'].forEach(id=>$(id).onchange=render);
+$('closeLoop').onchange=()=>{if(built)build();else render()};
+function recordPoint(p){if(!currentTrace){currentTrace=[p];traceSegments.push(currentTrace);return}if(!currentTrace.length||distance(p,currentTrace[currentTrace.length-1])>.4)currentTrace.push(p)}
+function frame(now){if(playing&&built&&series){if(lastFrame)t+=(now-lastFrame)*.000055*(+$('speed').value)/100;if(t>=1){t=1;playing=false;$('playBtn').textContent='▶ Animate';$('mode').textContent='FOURIER · complete'}const p=tipAt(t,false);if(inGap(t)){currentTrace=null}else{recordPoint(p)}$('progress').textContent=Math.round(t*100)+'%';render()}lastFrame=now;requestAnimationFrame(frame)}
+resize();window.addEventListener('resize',resize);requestAnimationFrame(frame);
+})();
+</script>
+</body>
+</html>
